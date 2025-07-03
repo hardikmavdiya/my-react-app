@@ -29,7 +29,7 @@ function App() {
 
     try {
       // Make a POST request to your Flask backend API endpoint
-      const response = await fetch('http://localhost:5000/api/generate_ideas', {
+      const response = await fetch('https://flask-gemini-backend-138659766439.asia-south1.run.app/api/generate_ideas', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json', // Specify that we are sending JSON data
