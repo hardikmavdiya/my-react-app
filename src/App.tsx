@@ -10,8 +10,38 @@ function App() {
 
   // State variables to manage the output and UI feedback
   const [ideas, setIdeas] = useState<string>('');
+  const [parsedIdeas, setParsedIdeas] = useState<{ title: string; description: string }[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
+  const [copyMessage, setCopyMessage] = useState<string>('');
+
+  /**
+   * Parses the raw text output from Gemini into a structured array of ideas.
+   * Assumes the format "Idea X: [Title]\nDescription: [Description]"
+   * @param rawText The raw string response from the Gemini API.
+   * @returns An array of objects, each with a title and description.
+   */
+  const parseGeminiIdeas = (rawText: string) => {
+    const ideasArray: { title: string; description: string }[] = [];
+    // Split the text by "Idea X:" to get individual idea blocks
+    const ideaBlocks = rawText.split(/(Idea \d+:)/).filter(Boolean); // Filter out empty strings
+
+    for (let i = 0; i < ideaBlocks.length; i += 2) {
+      if (ideaBlocks[i].startsWith('Idea') && ideaBlocks[i + 1]) {
+        const blockContent = ideaBlocks[i + 1].trim();
+        const titleMatch = blockContent.match(/(.*?)\nDescription: (.*)/s); // Use /s for dotall
+        if (titleMatch && titleMatch.length >= 3) {
+          const title = titleMatch[1].trim();
+          const description = titleMatch[2].trim();
+          ideasArray.push({ title, description });
+        } else {
+          // Fallback if parsing fails for a block, just add as raw text
+          ideasArray.push({ title: "Unparsed Idea", description: blockContent });
+        }
+      }
+    }
+    return ideasArray;
+  };
 
   /**
    * Handles the form submission.
@@ -26,6 +56,8 @@ function App() {
     setLoading(true);
     setError('');
     setIdeas('');
+    setParsedIdeas([]);
+    setCopyMessage('');
 
     try {
       // Make a POST request to your Flask backend API endpoint
@@ -42,24 +74,42 @@ function App() {
         }),
       });
 
-      // Check if the HTTP response was successful (status code 200-299)
       if (!response.ok) {
-        // If not successful, parse the error message from the backend
         const errorData = await response.json();
         throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
       }
 
-      // Parse the successful JSON response from the backend
       const data = await response.json();
-      // Update the 'ideas' state with the generated content
-      setIdeas(data.ideas);
+      const rawIdeas = data.ideas;
+      setIdeas(rawIdeas);
+      setParsedIdeas(parseGeminiIdeas(rawIdeas));
+
     } catch (err: any) {
-      // Catch and display any errors during the fetch operation
       setError(err.message);
       console.error("Error fetching ideas:", err);
     } finally {
-      // Always set loading to false after the request completes (success or failure)
       setLoading(false);
+    }
+  };
+
+  /**
+   * Copies the generated ideas (raw text) to the clipboard.
+   */
+  const copyToClipboard = () => {
+    if (ideas) {
+      try {
+        const textarea = document.createElement('textarea');
+        textarea.value = ideas;
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+        setCopyMessage('Copied to clipboard!');
+        setTimeout(() => setCopyMessage(''), 3000);
+      } catch (err) {
+        console.error('Failed to copy text: ', err);
+        setCopyMessage('Failed to copy!');
+      }
     }
   };
 
@@ -77,7 +127,7 @@ function App() {
               id="niche"
               value={niche}
               onChange={(e) => setNiche(e.target.value)}
-              required // Make this field mandatory
+              required
               placeholder="e.g., Fitness, Gaming, Cooking"
             />
           </div>
@@ -100,7 +150,7 @@ function App() {
               id="platformType"
               value={platformType}
               onChange={(e) => setPlatformType(e.target.value)}
-              required // Make this field mandatory
+              required
               placeholder="e.g., YouTube, Instagram, Blog"
             />
           </div>
@@ -110,17 +160,23 @@ function App() {
           </button>
         </form>
 
-        {/* Display error message if any */}
         {error && <p className="error-message">Error: {error}</p>}
 
-        {/* Display generated ideas if available */}
-        {ideas && (
+        {parsedIdeas.length > 0 && (
           <div className="ideas-output">
             <h2>Generated Content Ideas:</h2>
-            {/* Using dangerouslySetInnerHTML to render potentially formatted text from Gemini.
-                Be cautious with this if you're not sure about the source of the HTML.
-                For plain text, just use {ideas} */}
-            <pre dangerouslySetInnerHTML={{ __html: ideas }}></pre>
+            <button onClick={copyToClipboard} className="copy-button">
+              <i className="fas fa-copy"></i> Copy All Ideas
+            </button>
+            {copyMessage && <span className="copy-message">{copyMessage}</span>}
+            <div className="idea-list">
+              {parsedIdeas.map((idea, index) => (
+                <div key={index} className="idea-item">
+                  <h3>{idea.title}</h3>
+                  <p>{idea.description}</p>
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </header>
